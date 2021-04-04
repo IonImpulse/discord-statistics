@@ -114,13 +114,24 @@ impl Author {
 
         return self;
     }
+
     pub fn print_stats(self) {
         println!("ID: {}", self.id);
         println!("Name(s): {:?}", self.names);
-        println!("Messages: {} Words: {} Characters: {}", self.message_count, self.word_count, self.character_count);
+        println!("Messages: {} Words: {} Characters: {} Questions: {}", self.message_count, self.word_count, self.character_count, self.question_count);
         println!("Attachments: {}", self.attachments_ledger.len());
         println!("Vocabulary: {}", self.vocab_dict.len());
         println!("Time Ledger Length: {}", self.time_ledger.len());
+    }
+
+    pub fn return_stats(self) -> Vec<String> {
+        return vec![self.message_count.to_string(),
+                    self.word_count.to_string(),
+                    self.character_count.to_string(),
+                    self.attachments_ledger.len().to_string(),
+                    self.question_count.to_string(),
+                    self.vocab_dict.len().to_string(),
+        ];
     }
 }
 
