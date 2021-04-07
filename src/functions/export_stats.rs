@@ -1,14 +1,19 @@
-use std::error::*;
+use chrono::*;
 use csv;
 use csv::Writer;
 use std::collections::HashMap;
-use plotters::prelude::*;
-use chrono::*;
+use std::error::*;
+
+use plotly::common::{TickFormatStop, Title};
+use plotly::layout::{Axis, RangeSelector, RangeSlider, SelectorButton, SelectorStep, StepMode};
+use plotly::{Candlestick, Layout, Ohlc, Plot, Scatter, ImageFormat};
+use ::serde::Deserialize;
+use std::env;
+use std::path::PathBuf;
 
 use super::structs::*;
 
 pub fn export_author(path: &String, author: Author) -> Result<(), csv::Error> {
-    
     let author_name = &author.names[0];
 
     let path_to_export = format!("{}{}.csv", path, author_name);
@@ -19,7 +24,14 @@ pub fn export_author(path: &String, author: Author) -> Result<(), csv::Error> {
 
     wtr.write_record(&["Statistics for:", author_name.as_str(), "", "", "", ""])?;
     wtr.write_record(&["-----------------------------", "", "", "", "", ""])?;
-    wtr.write_record(&["Total Messages:", "Total Words:", "Total Characters:", "Total Attachments:", "Total Questions:", "Total Vocabulary:"])?;
+    wtr.write_record(&[
+        "Total Messages:",
+        "Total Words:",
+        "Total Characters:",
+        "Total Attachments:",
+        "Total Questions:",
+        "Total Vocabulary:",
+    ])?;
 
     // Write basic stats
     wtr.write_record(author.return_stats())?;
@@ -29,72 +41,75 @@ pub fn export_author(path: &String, author: Author) -> Result<(), csv::Error> {
     Ok(())
 }
 
-pub fn export_time_graph(title: &String, path: &String, author: Author) -> Result<(), Box<dyn Error>> {
-    let mut time_ledger: Vec<(String, f32)> = Vec::new();
-    let mut string_ledger: Vec<String> = Vec::new();
+pub fn export_time_graph(
+    title: &String,
+    path: &String,
+    author: Author,
+) -> Result<(), Box<dyn Error>> {
+    let mut time_range: Vec<NaiveTime> = Vec::new();
+    let mut num_messages: Vec<u128> = Vec::new();
 
     for hr in 0..24 {
         for mn in 0..60 {
-            string_ledger.push(format!("{}:{}", hr, mn));
-            time_ledger.push((format!("{}:{}", hr, mn),0_f32));
-        } 
+            time_range.push(NaiveTime::from_hms(hr, mn, 0));
+            num_messages.push(0);
+        }
     }
 
-    let mut max: f32 = 0.;
+    let mut max: u128 = 0;
 
     for point in author.time_ledger {
         let index: usize = (point.minute() + (point.hour() * 60)) as usize;
-        time_ledger[index].1 += 1.;
+        num_messages[index] += 1;
 
-        if time_ledger[index].1 > max { max = time_ledger[index].1; }
+        if num_messages[index] > max {
+            max = num_messages[index];
+        }
     }
 
-    let root =
-        BitMapBackend::new(format!("{}{}-timemap.png", path, title).as_str(), (1024, 768)).into_drawing_area();
+    let output_path = format!("{}{}-timemap.html", path.clone(), title.clone());
 
-    root.fill(&WHITE)?;
+    let mut plot = Plot::new();
+    
+    let trace = Scatter::new(time_range, num_messages);
+    plot.add_trace(trace);
 
-    let mut chart = ChartBuilder::on(&root)
-        .margin(10)
-        .caption(
-            "Messages Sent by Minute",
-            ("sans-serif", 40),
-        )
-        .set_label_area_size(LabelAreaPosition::Left, 60)
-        .set_label_area_size(LabelAreaPosition::Right, 60)
-        .set_label_area_size(LabelAreaPosition::Bottom, 40)
-        .build_cartesian_2d(
-            (NaiveTime::from_hms(0,0,0)..NaiveTime::from_hms(23,59,59)),
-            0.0..max,
-        )?;
+    let layout = Layout::new()
+        .x_axis(Axis::new().range_slider(RangeSlider::new().visible(true)))
+        .title(Title::new(title));
+    plot.set_layout(layout);
 
-    chart
-        .configure_mesh()
-        .disable_x_mesh()
-        .disable_y_mesh()
-        .x_labels(48)
-        .y_desc("Messages sent")
-        .draw()?;
+    // Uncomment line below to show plot when exporting
+    //plot.show();
 
-    chart.draw_series(LineSeries::new(
-        DATA.iter().map(|(y, m, t)| (Utc.ymd(*y, *m, 1), *t)),
-        &BLUE,
-    ))?;
+    plot.to_html(output_path);
 
     Ok(())
 }
 
-pub fn export_all(path: &String, author_path: &String, graph_path: &String, server: Author, author_hashmap: HashMap<u64, Author>) -> Result<(), csv::Error> {
-
+pub fn export_all(
+    path: &String,
+    author_path: &String,
+    graph_path: &String,
+    server: Author,
+    author_hashmap: HashMap<u64, Author>,
+) -> Result<(), csv::Error> {
     let path_to_export = format!("{}Server Statistics.csv", path);
 
     let mut wtr = Writer::from_path(path_to_export)?;
 
     // Start all of the tedious data labeling and exporting...
 
-    wtr.write_record(&["Statistics for server:", "", "", "", "", "",])?;
+    wtr.write_record(&["Statistics for server:", "", "", "", "", ""])?;
     wtr.write_record(&["-----------------------------", "", "", "", "", ""])?;
-    wtr.write_record(&["Total Messages:", "Total Words:", "Total Characters:", "Total Attachments:", "Total Questions:", "Total Vocabulary:"])?;
+    wtr.write_record(&[
+        "Total Messages:",
+        "Total Words:",
+        "Total Characters:",
+        "Total Attachments:",
+        "Total Questions:",
+        "Total Vocabulary:",
+    ])?;
 
     // Write basic stats
     wtr.write_record(server.clone().return_stats())?;
@@ -103,7 +118,14 @@ pub fn export_all(path: &String, author_path: &String, graph_path: &String, serv
     wtr.write_record(&["Members of server:", "", "", "", "", ""])?;
     for (_, author) in &author_hashmap {
         let record_to_write = format!("{:?}", author.names);
-        wtr.write_record(&[author.id.to_string(), record_to_write, "".to_string(), "".to_string(), "".to_string(), "".to_string()])?;
+        wtr.write_record(&[
+            author.id.to_string(),
+            record_to_write,
+            "".to_string(),
+            "".to_string(),
+            "".to_string(),
+            "".to_string(),
+        ])?;
     }
 
     // Write out ranking lists
@@ -113,7 +135,14 @@ pub fn export_all(path: &String, author_path: &String, graph_path: &String, serv
     message_count.sort_by(|a, b| b.1.message_count.cmp(&a.1.message_count));
 
     for item in message_count {
-        wtr.write_record(&[&item.1.names[0], &item.1.message_count.to_string(), "", "", "", ""])?;
+        wtr.write_record(&[
+            &item.1.names[0],
+            &item.1.message_count.to_string(),
+            "",
+            "",
+            "",
+            "",
+        ])?;
     }
 
     wtr.write_record(&["Word Count Ranking:", "", "", "", "", ""])?;
@@ -122,7 +151,14 @@ pub fn export_all(path: &String, author_path: &String, graph_path: &String, serv
     word_count.sort_by(|a, b| b.1.word_count.cmp(&a.1.word_count));
 
     for item in word_count {
-        wtr.write_record(&[&item.1.names[0], &item.1.word_count.to_string(), "", "", "", ""])?;
+        wtr.write_record(&[
+            &item.1.names[0],
+            &item.1.word_count.to_string(),
+            "",
+            "",
+            "",
+            "",
+        ])?;
     }
 
     wtr.write_record(&["Character Count Ranking:", "", "", "", "", ""])?;
@@ -131,16 +167,34 @@ pub fn export_all(path: &String, author_path: &String, graph_path: &String, serv
     character_count.sort_by(|a, b| b.1.character_count.cmp(&a.1.character_count));
 
     for item in character_count {
-        wtr.write_record(&[&item.1.names[0], &item.1.character_count.to_string(), "", "", "", ""])?;
+        wtr.write_record(&[
+            &item.1.names[0],
+            &item.1.character_count.to_string(),
+            "",
+            "",
+            "",
+            "",
+        ])?;
     }
 
     wtr.write_record(&["Attachment Count Ranking:", "", "", "", "", ""])?;
 
     let mut attachments_count: Vec<(&u64, &Author)> = author_hashmap.iter().collect();
-    attachments_count.sort_by(|a, b| b.1.attachments_ledger.len().cmp(&a.1.attachments_ledger.len()));
+    attachments_count.sort_by(|a, b| {
+        b.1.attachments_ledger
+            .len()
+            .cmp(&a.1.attachments_ledger.len())
+    });
 
     for item in attachments_count {
-        wtr.write_record(&[&item.1.names[0], &item.1.attachments_ledger.len().to_string(), "", "", "", ""])?;
+        wtr.write_record(&[
+            &item.1.names[0],
+            &item.1.attachments_ledger.len().to_string(),
+            "",
+            "",
+            "",
+            "",
+        ])?;
     }
 
     wtr.write_record(&["Question Count Ranking:", "", "", "", "", ""])?;
@@ -149,7 +203,14 @@ pub fn export_all(path: &String, author_path: &String, graph_path: &String, serv
     question_count.sort_by(|a, b| b.1.question_count.cmp(&a.1.question_count));
 
     for item in question_count {
-        wtr.write_record(&[&item.1.names[0], &item.1.question_count.to_string(), "", "", "", ""])?;
+        wtr.write_record(&[
+            &item.1.names[0],
+            &item.1.question_count.to_string(),
+            "",
+            "",
+            "",
+            "",
+        ])?;
     }
 
     wtr.write_record(&["Vocabulary Count Ranking:", "", "", "", "", ""])?;
@@ -158,28 +219,37 @@ pub fn export_all(path: &String, author_path: &String, graph_path: &String, serv
     vocab_count.sort_by(|a, b| b.1.vocab_dict.len().cmp(&a.1.vocab_dict.len()));
 
     for item in vocab_count {
-        wtr.write_record(&[&item.1.names[0], &item.1.vocab_dict.len().to_string(), "", "", "", ""])?;
+        wtr.write_record(&[
+            &item.1.names[0],
+            &item.1.vocab_dict.len().to_string(),
+            "",
+            "",
+            "",
+            "",
+        ])?;
     }
 
     wtr.flush()?;
 
     for (_, value) in author_hashmap {
-        let result = export_author(author_path, value.clone());
+        let csv_result = export_author(author_path, value.clone());
 
-        if result.is_err() {
+        if csv_result.is_err() {
             eprintln!("Error: Could not export {}!", value.names[0]);
         } else {
             eprintln!("Exported {} successfully!", value.names[0]);
         }
-    }
 
+        let graph_result = export_time_graph(&"Time Map".to_string(), graph_path, value.clone());
+    }
 
     // CSV exporting is done, now time for graphs!
 
-    let server_graph_result = export_time_graph(&"Time Map".to_string(), path, server);
+    let server_graph_result = export_time_graph(&"Server Time Map".to_string(), path, server);
 
     if server_graph_result.is_err() {
-        println!("{}",  server_graph_result.unwrap_err());
+        println!("{}", server_graph_result.unwrap_err());
     }
+
     Ok(())
 }
