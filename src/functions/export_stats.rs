@@ -231,16 +231,30 @@ pub fn export_all(
 
     wtr.flush()?;
 
+    let mut count = 0;
+
     for (_, value) in author_hashmap {
+        count += 1;
+
+        eprintln!("{}: Exporting {}...", count, value.names[0]);
+
         let csv_result = export_author(author_path, value.clone());
 
         if csv_result.is_err() {
-            eprintln!("Error: Could not export {}!", value.names[0]);
+            eprintln!("- Error: Could not export csv!");
         } else {
-            eprintln!("Exported {} successfully!", value.names[0]);
+            eprintln!("- Exported csv successfully!");
         }
 
-        let graph_result = export_time_graph(&"Time Map".to_string(), graph_path, value.clone());
+        let title = format!("Time Map for {}", value.names[0]);
+
+        let graph_result = export_time_graph(&title, graph_path, value.clone());
+
+        if csv_result.is_err() {
+            eprintln!("- Error: Could not export graph!");
+        } else {
+            eprintln!("- Exported graph successfully!");
+        }
     }
 
     // CSV exporting is done, now time for graphs!
