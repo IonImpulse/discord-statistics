@@ -1,13 +1,11 @@
-use std::io::copy;
-use std::fs::File;
 use reqwest;
+use std::fs::File;
+use std::io::copy;
 
 async fn download_image(url: String, path: String, prefix: String, sep: String) -> bool {
-    
     let response = reqwest::get(url).await;
-    
-    if response.is_ok() {
 
+    if response.is_ok() {
         let response = response.unwrap();
 
         let dest = {
@@ -17,7 +15,6 @@ async fn download_image(url: String, path: String, prefix: String, sep: String) 
                 .and_then(|segments| segments.last())
                 .and_then(|name| if name.is_empty() { None } else { Some(name) })
                 .unwrap_or("untitled.bin");
-    
             println!("File to download: '{}'", file_name);
             let file_name = format!("{}{}{}-{}", path, sep, prefix, file_name);
             println!("Location: '{:?}'", file_name);
@@ -35,5 +32,5 @@ async fn download_image(url: String, path: String, prefix: String, sep: String) 
         }
     }
 
-    return false
+    return false;
 }

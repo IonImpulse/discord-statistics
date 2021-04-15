@@ -3,6 +3,7 @@ pub mod functions;
 use functions::*;
 
 use num_cpus;
+use regex;
 use std::collections::*;
 use std::env;
 use std::fs;
@@ -109,6 +110,10 @@ fn main() {
     // First, we get all paths
     let paths = fs::read_dir(source_path).unwrap();
 
+    // Setup a dictionary to store the ID of each channel
+    // and link it to the path and name
+    let mut channel_id_dict: HashMap<u64, String> = HashMap::new();
+
     // Setup where the threads will send their data
     let mut message_parts: Vec<structs::Message> = Vec::new();
     let mut threads = Vec::new();
@@ -121,7 +126,45 @@ fn main() {
 
         if let Some(value) = path.path().extension() {
             if value == "csv" {
-                threads.push(thread::spawn(move || scrape_file::scrape_file(path)));
+                let string_path = String::from(path.path().to_str().unwrap());
+
+                // First, get the channel ID from the file name
+                let channel_id_regex = regex::Regex::new(r#"(\[[0-9]{18}\])"#).unwrap();
+
+                let channel_id = channel_id_regex.captures(&string_path);
+
+                if channel_id.is_some() {
+                    let channel_id: u64 = channel_id
+                        .unwrap()
+                        .get(0)
+                        .unwrap()
+                        .as_str()
+                        .replace("[", "")
+                        .replace("]", "")
+                        .parse::<u64>()
+                        .unwrap();
+
+                    let channel_path_words: String = string_path
+                        .replace(" ", "")
+                        .split("-")
+                        .enumerate()
+                        .filter(|&(i, _)| i >= 2)
+                        .map(|(_, e)| format!("{}-", e))
+                        .collect();
+
+                    let channel_name: String = channel_path_words
+                        .split("[")
+                        .enumerate()
+                        .filter(|&(i, _)| i < 1)
+                        .map(|(_, e)| e)
+                        .collect();
+
+                    channel_id_dict.insert(channel_id.clone(), channel_name);
+
+                    threads.push(thread::spawn(move || {
+                        scrape_file::scrape_file(string_path, channel_id)
+                    }));
+                }
             }
         }
     }
@@ -229,13 +272,14 @@ fn main() {
     let graph_dir_created = fs::create_dir_all(&graphs_dir);
 
     if author_dir_created.is_ok() && graph_dir_created.is_ok() {
-        // Export all of the csv files
+        // Export all of the csv and graph files
         let stats_exported = export_stats::export_all(
             &export_main_dir,
             &authors_dir,
             &graphs_dir,
             server_author,
             master_author_map,
+            channel_id_dict,
         );
 
         if stats_exported.is_err() {

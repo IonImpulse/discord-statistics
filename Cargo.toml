@@ -14,3 +14,5 @@ num_cpus = "1.13.0"
 reqwest = "*"
 plotly = { version = "0.6.0" }
 serde = "*"
+regex = "*"
+sanitize-filename = "0.3.0"
