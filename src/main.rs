@@ -9,6 +9,7 @@ use std::env;
 use std::fs;
 use std::thread;
 use std::time;
+use std::io::Write;
 
 fn main() {
     /*
@@ -197,6 +198,8 @@ fn main() {
 
     // Evenly distribute messages between each threadpool
     // while making sure to not unnecessarily copy data
+    let all_messages = message_parts.clone();
+
     let mut i = 0;
     while message_parts.len() > 1 {
         thread_workloads[i].push(message_parts.pop().unwrap());
@@ -270,6 +273,13 @@ fn main() {
 
     // Next, we can create the graph dir also
     let graph_dir_created = fs::create_dir_all(&graphs_dir);
+
+    // Create the text file of all message for use as a simple dataset
+    let mut server_text_file = fs::File::create(format!("{}All_Messages.txt", &export_main_dir)).unwrap();
+    
+    for msg in all_messages {
+        server_text_file.write_all(format!("[{}] {}\n", msg.author_name, msg.content).as_bytes());
+    }
 
     if author_dir_created.is_ok() && graph_dir_created.is_ok() {
         // Export all of the csv and graph files
