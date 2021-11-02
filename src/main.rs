@@ -10,6 +10,7 @@ use std::fs;
 use std::thread;
 use std::time;
 use std::io::Write;
+use chrono::Datelike;
 
 fn main() {
     /*
@@ -38,6 +39,8 @@ fn main() {
     let mut scrape_attachments = false;
     let mut polls_path: &str = "";
     let mut process_words: Vec<&str>;
+    let mut start_year: i32 = 0;
+    let mut end_year: i32 = 0;
 
     if &arguments.len() == &1 {
         source_path = arguments[0].as_str();
@@ -51,6 +54,8 @@ fn main() {
         let i_flag = arguments.iter().position(|r| r == "-i");
         let p_flag = arguments.iter().position(|r| r == "-p");
         let t_flag = arguments.iter().position(|r| r == "-t");
+        let start_flag = arguments.iter().position(|r| r == "--start");
+        let end_flag = arguments.iter().position(|r| r == "--end");
 
         if let Some(value) = s_flag {
             if value < arguments.len() {
@@ -94,6 +99,30 @@ fn main() {
         if let Some(value) = i_flag {
             if value < arguments.len() {
                 scrape_attachments = true;
+            } else {
+                println!("Error in path arguments!");
+                panic!();
+            }
+        }
+
+        if let Some(value) = start_flag {
+            if value < arguments.len() {
+                start_year = arguments[value + 1]
+                    .clone()
+                    .parse::<i32>()
+                    .unwrap();
+            } else {
+                println!("Error in path arguments!");
+                panic!();
+            }
+        }
+
+        if let Some(value) = end_flag {
+            if value < arguments.len() {
+                end_year = arguments[value + 1]
+                    .clone()
+                    .parse::<i32>()
+                    .unwrap();
             } else {
                 println!("Error in path arguments!");
                 panic!();
@@ -198,7 +227,23 @@ fn main() {
 
     // Evenly distribute messages between each threadpool
     // while making sure to not unnecessarily copy data
-    let all_messages = message_parts.clone();
+    let all_messages: Vec<structs::Message>;
+
+    if (start_year == 0) && (end_year == 0) {
+        all_messages = message_parts.clone();
+    }  else {
+        all_messages = message_parts
+            .iter()
+            .filter(|m| {
+                let date = m.date;
+
+                let year = date.year();
+
+                year >= start_year && year <= end_year
+            }).cloned().collect();
+    }
+
+    let mut message_parts = all_messages.clone();
 
     let mut i = 0;
     while message_parts.len() > 1 {
