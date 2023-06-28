@@ -211,6 +211,71 @@ pub fn export_channel_timemap_graph(
     plot.to_html(output_path);
     Ok(())
 }
+
+// Function to show the total messages sent each week
+
+pub fn export_server_timeline(
+    title: &String,
+    path: &String,
+    server: Author,
+    channel_id_dict: HashMap<u64, String>,
+) -> Result<(), Box<dyn Error>> {
+    let output_path = format!(
+        "{}{}-timeline.html",
+        path.clone(),
+        sanitize_filename::sanitize(title.clone())
+    );
+
+    // Find the first and last message in the server
+    let mut sorted_time_ledger = server.time_ledger.clone().into_iter().collect::<Vec<_>>();
+    sorted_time_ledger.sort_by(|a, b| a.0.cmp(&b.0));
+
+    let end_time = server.time_ledger.first().unwrap().0;
+    let mut start_time = server.time_ledger.last().unwrap().0;
+
+    println!("Start time: {:?}", start_time);
+    println!("End time: {:?}", end_time);
+
+    // Sum the total of all messages in the server each 7 days
+    let mut message_count: Vec<u128> = Vec::new();
+
+    // Set each week to zero
+    for _ in 0..((end_time - start_time).num_days() / 7) + 7 {
+        message_count.push(0);
+    }
+
+    // Add the total messages in each week
+    for (point, channel_id) in server.time_ledger {
+        let index: usize = ((point - start_time).num_days() / 7) as usize;
+        if index >= message_count.len() {
+            println!("Index out of bounds: {}", index);
+        } else {
+            message_count[index] += 1;
+        }
+    }
+
+    let mut plot = Plot::new();
+
+    // Create time range
+    let mut time_range: Vec<NaiveDateTime> = Vec::new();
+    
+    while (start_time <= end_time) {
+        time_range.push(start_time.clone());
+        start_time = start_time + Duration::days(7);
+    }
+
+    let trace = Scatter::new(time_range, message_count);
+    plot.add_trace(trace);
+    let layout = Layout::new()
+        .x_axis(Axis::new().range_slider(RangeSlider::new().visible(true)))
+        .title(Title::new(title));
+    plot.set_layout(layout);
+    // Uncomment line below to show plot when exporting
+    //plot.show();
+    plot.to_html(output_path);
+    Ok(())
+}
+
 pub fn export_all(
     path: &String,
     author_path: &String,
@@ -413,6 +478,12 @@ pub fn export_all(
     }
 
     // Author exporting is done, now time for server graphs!
+    let export_server_timeline_result = export_server_timeline(
+        &"Server Timeline Graph".to_string(),
+        path,
+        server.clone(),
+        channel_id_dict.clone(),
+    );
 
     let server_timemap_graph_result =
         export_time_graph(&"Server Time Graph".to_string(), path, server.clone());
@@ -420,7 +491,7 @@ pub fn export_all(
     if server_timemap_graph_result.is_err() {
         println!("{}", server_timemap_graph_result.unwrap_err());
     }
-
+    
     let server_channel_graph_result = export_channel_graph(
         &"Channel Time Graph".to_string(),
         path,
